@@ -11,19 +11,24 @@ export default function App() {
   const [state, dispatch] = React.useReducer(reducer, initialState);
   const [boardRef, boardWidth] = useResizeObserver();
 
+  const width = state.current[0].length;
+  const height = state.current.length;
+
   React.useEffect(() => {
     const cb = (e: KeyboardEvent) => dispatch(actions.keypress(e));
     window.addEventListener('keydown', cb);
     return () => window.removeEventListener('keydown', cb);
   });
 
-  const pieceSize = boardWidth / state.width;
+  const pieceSize = boardWidth / width;
 
   return (
     <Flex justifyContent="center">
       <Box width={1/3}>
-        <Board ref={boardRef} ratio={state.height / state.width}>
-          {state.current.map(entity => <Piece key={entity.id} size={pieceSize} entity={entity} />)}
+        <Board ref={boardRef} ratio={height / width}>
+          {state.current.map(
+            (row, y) => row.map((cell, x) => cell.map((entity, z) => <Piece key={`${x}.${y}.${z}`} size={pieceSize} x={x} y={y}>{entity[1]}</Piece>))
+          )}
         </Board>
       </Box>
     </Flex>

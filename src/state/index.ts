@@ -1,62 +1,54 @@
 import { getType, ActionType } from 'typesafe-actions';
+import * as R from 'ramda';
 import * as actions from './actions';
 
-export type Coords = [number, number];
+type MapOf<T> = { [key: string]: T };
 
-export type Noun = string;
+type Coords = [number, number];
 
-export enum Connector {
-  Is,
-  And,
-  Not,
+type Noun = ['noun', string];
+const noun = (symbol: string): Noun => ['noun', symbol];
+
+type Connector = ['connector', string];
+const connector: MapOf<Connector> = {
+  Is: ['connector', '='],
+  And: ['connector', '&'],
+  Not: ['connector', '🚫'],
+}
+
+type Action = ['action', string];
+const action: MapOf<Action> = {
+  Move: ['action', '🚗'],
+  Push: ['action', 'push'],
+  Stop: ['action', '🛑'],
+  You: ['action', '🇺'],
 };
 
-export enum Action {
-  Move,
-  Push,
-  Stop,
-  You,
-};
+type Thing = Action | Noun;
+export type Entity = Connector | Thing;
 
-export type Entity = { type: 'connector', value: Connector } |
-                     { type: 'action', value: Action } |
-                     { type: 'noun', value: Noun };
+const getDiscr = (ent: Entity) => ent[0];
+const getValue = (ent: Entity) => ent[1];
+const isAction = (ent: Entity): ent is Action => getDiscr(ent) === 'action';
+const isNoun = (ent: Entity): ent is Noun  => getDiscr(ent) === 'noun';
+const isThing = (ent: Entity): ent is Thing => isNoun(ent) || isAction(ent);
+const isConnector = (ent: Entity): ent is Connector => getDiscr(ent) === 'connector';
+const compare = R.curry((a: Entity, b: Entity) => getDiscr(a) === getDiscr(b) && getValue(a) === getValue(b));
 
-export type Rule = [Noun, Action];
+type Relationship = boolean;
+type Rule = [Thing, Relationship, Thing];
+type NestedRule = [Thing[], Relationship, Thing[]];
 
-export type Cell = Entity[];
-export type Row = Cell[];
-export type Grid = Row[];
+type Cell = Entity[];
+type Row = Cell[];
+type Grid = Row[];
 
-export enum Move {
+enum Move {
   Up,
   Right,
   Down,
   Left,
   Wait,
-};
-
-type State = {
-  current: Grid,
-  stack: Grid[],
-};
-
-export { actions };
-
-const man: Entity = {
-  type: 'noun',
-  value: '🕴️',
-};
-
-export const initialState: State = {
-  current: [
-    [[], [man], [], [] ,[]],
-    [[], [], [], [] ,[]],
-    [[], [], [], [] ,[]],
-    [[], [], [], [] ,[]],
-    [[], [], [], [] ,[]],
-  ],
-  stack: [],
 };
 
 function getMove(event: KeyboardEvent) {
@@ -77,7 +69,7 @@ function getMove(event: KeyboardEvent) {
   }
 }
 
-export function getTransform(move: Move): Coords {
+function getTransform(move: Move): Coords {
   switch (move) {
     case Move.Up: return [0, -1];
     case Move.Right: return [1, 0];
@@ -87,42 +79,57 @@ export function getTransform(move: Move): Coords {
   }
 }
 
-export function applyTransform(a: Coords, b: Coords): Coords {
-  return [a[0] + b[0], a[1] + b[1]];
+const applyTransform = (a: Coords, b: Coords): Coords => [a[0] + b[0], a[1] + b[1]];
+
+const isEmpty = (cell: Cell) => cell.length === 0;
+
+const flattenRules = (nested: NestedRule[]) => nested.flatMap(
+  n => R.xprod(n[0], n[2]).map(R.insert<Thing | boolean>(1, n[1])) as [Thing, boolean, Thing][]
+);
+
+function getNestedRulesFromLine(line: Row): NestedRule[] {
+  const rules: NestedRule[] = [];
+
+  for (let i = 0; i < line.length; i++) {
+    let cell = line[i];
+    if (isEmpty(cell)) continue;
+
+    const thing1 = cell.filter(isThing);
+    if (isEmpty(thing1)) continue;
+
+    cell = line[++i];
+    if (!cell) continue;
+    if (!cell.some(compare(connector.Is))) continue;
+
+    do {
+      cell = line[++i];
+      if (!cell) break;
+      let relationship = true;
+      if (cell.some(compare(connector.Not))) {
+        relationship = false;
+        cell = line[++i];
+        if (!cell) break;
+      }
+
+      const thing2 = cell.filter(isThing);
+      if (isEmpty(thing2)) break;
+      rules.push([thing1, relationship, thing2])
+
+      cell = line[++i];
+      if (!cell) break;
+    } while(cell.some(compare(connector.And)));
+  }
+
+  return rules;
 }
 
-function containsConnector(cell: Cell, value: Connector) {
-  return cell.some(entity => entity.type === 'connector' && entity.value === value)
-}
-
-function containsAction(cell: Cell, value: Action) {
-  return cell.some(entity => entity.type === 'action' && entity.value === value)
-}
-
-function getRulesFromLine(line: Row) {
-  let finishedRules = [];
-  let rules = [];
-  line.forEach(cell => {
-    if (rule.length === 0) 
-  });
-  return finishedRules;
+function getRulesFromLine(line: Row): Rule[] {
+  return flattenRules(getNestedRulesFromLine(line));
 }
 
 function getRules(grid: Grid) {
-  let rules = [];
-
-  grid.forEach(
-    (row, y) => row.forEach(
-      (cell, x) => {
-        if (cell.length == 0) return;
-
-        const rules = [
-          ...getRulesFromLine(row.slice(x)),
-          ...getRulesFromLine(grid.slice(y).map(r => r[x]))
-        ];
-      }
-    )
-  );
+  const lines = [...grid, ...R.transpose(grid)];
+  return lines.flatMap(getRulesFromLine);
 }
 
 function applyMove(grid: Grid, move: Move) {
@@ -130,6 +137,22 @@ function applyMove(grid: Grid, move: Move) {
   console.log(rules);
   return grid;
 }
+
+type State = {
+  current: Grid,
+  stack: Grid[],
+};
+
+export const initialState: State = {
+  current: [
+    [[], [noun('🕴️')], [connector.Is], [action.You] ,[]],
+    [[noun('🐈')], [connector.Is], [noun('🐦')], [connector.And] ,[]],
+    [[], [connector.Not], [], [] ,[]],
+    [[], [action.Move], [], [] ,[]],
+    [[noun('🛀')], [connector.Is], [noun('🔪')], [connector.And] ,[noun('🏺')]],
+  ],
+  stack: [],
+};
 
 export function reducer(state: State, action: ActionType<typeof actions>) {
   switch (action.type) {
@@ -147,3 +170,5 @@ export function reducer(state: State, action: ActionType<typeof actions>) {
     default: return state;
   }
 }
+
+export { actions };
