@@ -133,25 +133,27 @@ function getRules(grid: Grid) {
 }
 
 function applyMove(grid: Grid, move: Move) {
-  const rules = getRules(grid);
-  console.log(rules);
   return grid;
 }
 
 type State = {
   current: Grid,
   stack: Grid[],
+  rules: Rule[],
 };
 
+const board1 = [
+  [[], [noun('🕴️')], [connector.Is], [action.You] ,[]],
+  [[noun('🐈')], [connector.Is], [noun('🐦')], [connector.And] ,[]],
+  [[], [connector.Not], [], [] ,[]],
+  [[], [action.Move], [], [] ,[]],
+  [[noun('🛀')], [connector.Is], [noun('🔪')], [connector.And] ,[noun('🏺')]],
+];
+
 export const initialState: State = {
-  current: [
-    [[], [noun('🕴️')], [connector.Is], [action.You] ,[]],
-    [[noun('🐈')], [connector.Is], [noun('🐦')], [connector.And] ,[]],
-    [[], [connector.Not], [], [] ,[]],
-    [[], [action.Move], [], [] ,[]],
-    [[noun('🛀')], [connector.Is], [noun('🔪')], [connector.And] ,[noun('🏺')]],
-  ],
+  current: board1,
   stack: [],
+  rules: getRules(board1),
 };
 
 export function reducer(state: State, action: ActionType<typeof actions>) {
@@ -161,9 +163,12 @@ export function reducer(state: State, action: ActionType<typeof actions>) {
       if (move === null) return state;
       action.payload.preventDefault();
 
+      const current = applyMove(state.current, move);
+
       return {
         ...state,
-        current: applyMove(state.current, move),
+        rules:  getRules(current),
+        current,
         stack: [...state.stack, state.current],
       };
     }
